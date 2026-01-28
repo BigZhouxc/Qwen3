@@ -1,0 +1,26 @@
+services:
+  qwen3_embedding:
+    image: qwen3-embedding-image
+    container_name: qwen3_transform_embedding
+    ports:
+      - "38049:38042"
+    volumes:
+      - ./server.py:/app/server.py
+      - /data/modelscope/hub/models/Qwen/Qwen3-VL-Embedding-2B:/model:ro
+    restart: unless-stopped
+    shm_size: 2g
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+
+    environment:
+      - TORCH_DTYPE=float16
+      - DEFAULT_DIMENSIONS=2048
+      - MAX_DIMENSIONS=2048
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility

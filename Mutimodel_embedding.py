@@ -2,7 +2,7 @@ import base64
 from pathlib import Path
 import httpx
 
-BASE_URL = "http://123.181.192.132:38049"
+BASE_URL = "http://xxxxx:38049"
 
 def img_to_base64(path: str) -> str:
     data = Path(path).read_bytes()

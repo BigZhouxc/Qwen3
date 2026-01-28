@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    ports:
+      - "38044:9000"   # S3 API
+      - "38045:9001"   # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./data/minio:/data
+    command: server /data --console-address ":9001"
+
+  qwen3_vl_chat:
+    image: qwenllm/qwenvl:qwen3vl-cu128
+    container_name: qwen3_vl_chat
+    restart: unless-stopped
+    runtime: nvidia
+    depends_on:
+      - minio
+    ports:
+      - "38043:38043"
+    ipc: host
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      CUDA_VISIBLE_DEVICES: "0"
+    volumes:
+      - /data/modelscope/hub/models/Qwen/Qwen3-VL-8B-Instruct:/model:ro
+    command:
+      - vllm
+      - serve
+      - /model
+      - --served-model-name
+      - Qwen3-VL-8B-Instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "38043"
+      - --dtype
+      - bfloat16
+      - --gpu-memory-utilization
+      - "0.85"
+      - --max-model-len
+      - "65536"
+      - --limit-mm-per-prompt.video
+      - "1"

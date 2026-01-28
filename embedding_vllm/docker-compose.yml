@@ -1,0 +1,30 @@
+services:
+  qwen3_embedding:
+    image: qwen3-embedding-image
+    container_name: qwen3_vllm_embedding
+    restart: unless-stopped
+
+    ports:
+      - "38049:38042"
+
+    # GPU
+    environment:
+      CUDA_VISIBLE_DEVICES: "1"                 # 按你原来用 1
+      MODEL_PATH: "/model"
+      VLLM_DTYPE: "float16"
+      VLLM_TP_SIZE: "1"
+      VLLM_GPU_MEMORY_UTILIZATION: "0.3"
+      VLLM_MAX_NUM_SEQS: "1"
+      TENSOR_PARALLEL_SIZE: "1"
+      VLLM_DISABLE_CUSTOM_ALL_REDUCE: "1"
+
+      # 可选：降低碎片/让分配更稳
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:256"
+
+    runtime: nvidia
+    volumes:
+      - /data/modelscope/hub/models/Qwen/Qwen3-VL-Embedding-8B:/model:ro
+      - ./server.py:/app/server.py:ro
+
+    ipc: host
+    shm_size: "16g"

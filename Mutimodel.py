@@ -9,13 +9,13 @@ import httpx
 # ======================
 # 基本配置
 # ======================
-CHAT_BASE_URL = "http://123.181.192.132:38043"
-EMBED_BASE_URL = "http://123.181.192.132:38042"
+CHAT_BASE_URL = "http://xxxx:38043"
+EMBED_BASE_URL = "http://xxxx:38042"
 
 CHAT_MODEL = "Qwen3-VL-8B-Instruct"
 EMBED_MODEL = "Qwen3-VL-Embedding-8B"
 
-MINIO_ENDPOINT = "123.181.192.132:38044"
+MINIO_ENDPOINT = "xxxxx:38044"
 MINIO_ACCESS_KEY = "minioadmin"
 MINIO_SECRET_KEY = "minioadmin"
 BUCKET = "videos"
@@ -43,7 +43,7 @@ def upload_video(video_path: str) -> str:
     )
 
     return f"http://{MINIO_ENDPOINT}/{BUCKET}/{object_name}"
-    # return f"http://172.17.0.1:38044/{BUCKET}/{object_name}"
+    # return f"http://xxxx:38044/{BUCKET}/{object_name}"
 
 def image_to_base64(image_path: str) -> str:
     """读取图片并转成 base64"""
@@ -97,13 +97,16 @@ def test_chat_image(image_path: str):
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": "https://ofasys-multimodal-wlcb-3-toshanghai.oss-accelerate.aliyuncs.com/wpf272043/keepme/image/receipt.png"
+                            "url": "https://ofasys-multimodal-wlcb-3-toshanghai.oss-accelerate.aliyuncs.com/wpf272043"
+                                   "/keepme/image/receipt.png "
                         }
-                        # "image_url": {
-                        #     "url": f"data:image/jpeg;base64,{image_base64}"
-                        # }
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
                     }
-
                 ]
             }
         ],
