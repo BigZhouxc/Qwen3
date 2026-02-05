@@ -10,7 +10,8 @@ import httpx
 # 基本配置
 # ======================
 CHAT_BASE_URL = "http://xxxx:38043"
-EMBED_BASE_URL = "http://xxxx:38042"
+# EMBED_BASE_URL = "http://xxxx:38042"
+EMBED_BASE_URL = "http://123.181.192.132:38042"
 
 CHAT_MODEL = "Qwen3-VL-8B-Instruct"
 EMBED_MODEL = "Qwen3-VL-Embedding-8B"
@@ -178,23 +179,46 @@ def test_embedding_text():
 # ======================
 # 5. 测试 Embedding（图文）
 # ======================
+import numpy as np
+def l2_normalize(vec):
+    norm = np.linalg.norm(vec)
+    return vec / norm if norm != 0 else vec  # 避免除零错误
+
 def test_embedding_image(image_path: str):
+
     print("\n=== Embedding 图文测试 ===")
+    with open("hehua.txt", "r", encoding="utf-8") as f:
+        content = f.read().strip()
+    img_hehua_64 = content.split(",", 1)[1] if "," in content else content
 
     image_base64 = image_to_base64(image_path)
+    img1 = image_to_base64("./1.png")
+    img2 = image_to_base64("./2.jpg")
+    img3 = image_to_base64("./3.jpg")
+    img4 = image_to_base64("./4.jpg")
+    img5 = image_to_base64("./5.jpg")
+    img6 = image_to_base64("./6.jpg")
 
     payload = {
         "model": EMBED_MODEL,
-        "input": [{
-            "text": "这张图片里有什么？",
-            "image_base64": image_base64
-        },
-        {
-            "text": "这张图片里有什么？",
-            "image_base64": image_base64
-        },
+        "input": [
+            {"text": "荷花"},
+            {"text": "收据"},
         ]
     }
+    payload_image = {
+        "model": EMBED_MODEL,
+        "input": [
+            {"image_base64": img1},
+            {"image_base64": img2},
+            {"image_base64": img3},
+            {"image_base64": img4},
+            {"image_base64": img5},
+            {"image_base64": img6},
+            {"image_base64": img_hehua_64},
+        ]
+    }
+
 
     resp = requests.post(
         f"{EMBED_BASE_URL}/v1/embeddings",
@@ -203,13 +227,88 @@ def test_embedding_image(image_path: str):
     )
     resp.raise_for_status()
 
+    resp_image = requests.post(
+        f"{EMBED_BASE_URL}/v1/embeddings",
+        json=payload_image,
+        timeout=300
+    )
+    resp_image.raise_for_status()
+
     data = resp.json()
-    emb = data["data"][0]["embedding"]
+    data_image = resp_image.json()
 
-    print("embedding 维度:", len(emb))
-    print("前 5 个值:", emb[:5])
+    e1 = data["data"][0]["embedding"][:2048]
+    e1 = l2_normalize(e1)
+    print("文本向量维度：", len(e1))
+    e2 = data["data"][1]["embedding"][:2048]
+    e2 = l2_normalize(e2)
+    e3 = data_image["data"][0]["embedding"][:2048]
+    e4 = data_image["data"][1]["embedding"][:2048]
+    e5 = data_image["data"][2]["embedding"][:2048]
+    e6 = data_image["data"][3]["embedding"][:2048]
+    e7 = data_image["data"][4]["embedding"][:2048]
+    e8 = data_image["data"][5]["embedding"][:2048]
+    e8 = l2_normalize(e8)
+    e9 = data_image["data"][6]["embedding"][:2048]
+    e9 = l2_normalize(e9)
+    #将e1-e7embedding都存入文本文件中，在前面加上标识
+    # with open("embedding_8b_add.txt", "w") as f:
+    #     f.write("=======8B 2048=========")
+    #     f.write("\n")
+    #     f.write("e1:")
+    #     f.write(str(e1))
+    #     f.write("\n")
+    #     f.write("e2:")
+    #     f.write(str(e2))
+    #     # f.write("\n")
+    #     # f.write("e3:")
+    #     # f.write(str(e3))
+    #     # f.write("\n")
+    #     # f.write("e4:")
+    #     # f.write(str(e4))
+    #     # f.write("\n")
+    #     # f.write("e5:")
+    #     # f.write(str(e5))
+    #     # f.write("\n")
+    #     # f.write("e6:")
+    #     # f.write(str(e6))
+    #     # f.write("\n")
+    #     # f.write("e7:")
+    #     # f.write(str(e7))
+    #     f.write("\n")
+    #     f.write("e8:")
+    #     f.write(str(e8))
 
 
+    #
+    # 将e1，e2分别和e3，e4，e5进行计算相似度
+    # cos1 = float(np.dot(e1, e3))
+    # print("e1==e3:", cos1)
+    # cos2 = float(np.dot(e1, e4))
+    # print("e1==e4:", cos2)
+    # cos3 = float(np.dot(e1, e5))
+    # print("e1==e5:", cos3)
+    # cos4 = float(np.dot(e1, e6))
+    # print("e1==e6:", cos4)
+    # cos5 = float(np.dot(e1, e7))
+    # print("e1==e7:", cos5)
+    # cos11 = float(np.dot(e1, e8))
+    # print("e1==e8:", cos11)
+    #
+    # cos6 = float(np.dot(e2, e3))  # normalize=True 时等价于 cosine
+    # print("e2==e3:", cos6)
+    # cos7 = float(np.dot(e2, e4))
+    # print("e2==e4:", cos7)
+    # cos8 = float(np.dot(e2, e5))
+    # print("e2==e5:", cos8)
+    # cos9 = float(np.dot(e2, e6))
+    # print("e2==e6:", cos9)
+    # cos10 = float(np.dot(e2, e7))
+    # print("e2==e7:", cos10)
+    # cos12 = float(np.dot(e2, e8))
+    # print("e2==e8:", cos12)
+    cos13 = float(np.dot(e1, e6))
+    print("e1==e9:", cos13)
 
 
 # ======================
@@ -220,7 +319,7 @@ if __name__ == "__main__":
     # test_chat_text()
 
     # 2. Chat 图文
-    test_chat_image(r"F:\workspace_mine\dify-data\u.jpg")
+    # test_chat_image(r"F:\workspace_mine\dify-data\u.jpg")
 
     # 3. chat 视频
     # video_url = upload_video(r"F:\workspace_mine\dify-data\free-videos.mp4")
@@ -231,7 +330,7 @@ if __name__ == "__main__":
     # test_embedding_text()
 
     # 5. Embedding 图文
-    # test_embedding_image(r"F:\workspace_mine\dify-data\u.jpg")
+    test_embedding_image(r"F:\workspace_mine\dify-data\u.jpg")
 
 
 

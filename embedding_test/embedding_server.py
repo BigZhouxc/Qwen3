@@ -28,7 +28,7 @@ processor = AutoProcessor.from_pretrained(
 
 model = Qwen3VLModel.from_pretrained(
     MODEL_PATH,
-    torch_dtype=DTYPE,
+    dtype=DTYPE,
     trust_remote_code=True,
 ).to(DEVICE)
 
@@ -49,7 +49,12 @@ class EmbeddingInput(BaseModel):
 
 class EmbeddingRequest(BaseModel):
     model: str
-    input: Union[str, List[str], EmbeddingInput]
+    input: Union[
+        str,
+        List[str],                 # ✅文本批量（OpenAI）
+        EmbeddingInput,            # ✅单图文
+        List[EmbeddingInput]       # ✅图文批量
+    ]
 
 
 # =========================
@@ -128,56 +133,130 @@ def compute_embedding(
     return emb[0].cpu().numpy()
 
 
+@torch.no_grad()
+def compute_embedding_batch(
+    texts: List[str],
+    images: Optional[List[Image.Image]] = None
+) -> np.ndarray:
+    """
+    一次 forward 支持 batch（图文混合）
+    return: (batch, hidden_dim)
+    """
+
+    batch_size = len(texts)
+
+    # ===== 构造 conversations =====
+    conversations = []
+    for i in range(batch_size):
+        if images and images[i] is not None:
+            content = [
+                {"type": "image"},
+                {"type": "text", "text": texts[i]}
+            ]
+        else:
+            content = [{"type": "text", "text": texts[i]}]
+
+        conversations.append({"role": "user", "content": content})
+
+    # ===== apply_chat_template 批量 prompt =====
+    prompts = [
+        processor.apply_chat_template(
+            [conv],
+            tokenize=False,
+            add_generation_prompt=False
+        )
+        for conv in conversations
+    ]
+
+    # ===== processor batch encode =====
+    inputs = processor(
+        text=prompts,
+        images=images if images is not None else None,
+        return_tensors="pt",
+        padding=True,
+    )
+
+    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+
+    # ===== 一次 forward =====
+    outputs = model(**inputs)
+
+    last_hidden = outputs.last_hidden_state
+    attention_mask = inputs["attention_mask"]
+
+    # ===== mean pooling =====
+    emb = mean_pooling(last_hidden, attention_mask)
+
+    # normalize
+    emb = torch.nn.functional.normalize(emb, dim=-1)
+
+    return emb.cpu().numpy()
+
+
 # =========================
 # API
 # =========================
 @app.post("/v1/embeddings")
 def create_embeddings(req: EmbeddingRequest):
-    results = []
 
-    # ---------- 文本批量 ----------
-    if isinstance(req.input, list) and all(isinstance(x, str) for x in req.input):
-        for idx, text in enumerate(req.input):
-            emb = compute_embedding(text=text)
-            results.append({
-                "object": "embedding",
-                "index": idx,
-                "embedding": emb.tolist()
-            })
+    # ---------- Case 1 ----------
+    if isinstance(req.input, str):
+        embs = compute_embedding_batch([req.input])
 
-    # ---------- 单文本 ----------
-    elif isinstance(req.input, str):
-        emb = compute_embedding(text=req.input)
-        results.append({
-            "object": "embedding",
-            "index": 0,
-            "embedding": emb.tolist()
-        })
+    # ---------- Case 2 ----------
+    elif isinstance(req.input, list) and all(isinstance(x, str) for x in req.input):
+        embs = compute_embedding_batch(req.input)
 
-    # ---------- 图文 ----------
+    # ---------- Case 3 ----------
     elif isinstance(req.input, EmbeddingInput):
-        image = None
-        if req.input.image_base64:
-            image = decode_base64_image(req.input.image_base64)
+        img = decode_base64_image(req.input.image_base64) if req.input.image_base64 else None
+        embs = compute_embedding_batch([req.input.text or ""], [img] if img else None)
 
-        emb = compute_embedding(
-            text=req.input.text,
-            image=image
-        )
+    # ---------- Case 4 ✅混合批量 ----------
+    elif isinstance(req.input, list) and all(isinstance(x, EmbeddingInput) for x in req.input):
 
-        results.append({
-            "object": "embedding",
-            "index": 0,
-            "embedding": emb.tolist()
-        })
+        text_texts, text_indices = [], []
+        img_texts, img_images, img_indices = [], [], []
+
+        for idx, item in enumerate(req.input):
+            if item.image_base64:
+                img_indices.append(idx)
+                img_texts.append(item.text or "")
+                img_images.append(decode_base64_image(item.image_base64))
+            else:
+                text_indices.append(idx)
+                text_texts.append(item.text or "")
+
+        embeddings = [None] * len(req.input)
+
+        if text_texts:
+            text_embs = compute_embedding_batch(text_texts)
+            for i, j in enumerate(text_indices):
+                embeddings[j] = text_embs[i]
+
+        if img_texts:
+            img_embs = compute_embedding_batch(img_texts, img_images)
+            for i, j in enumerate(img_indices):
+                embeddings[j] = img_embs[i]
+
+        embs = embeddings
 
     else:
         raise HTTPException(status_code=422, detail="Unsupported input format")
 
+    # ---------- OpenAI response ----------
+    data = []
+    for idx, emb in enumerate(embs):
+        data.append({
+            "object": "embedding",
+            "index": idx,
+            "embedding": emb.tolist()
+        })
+
     return {
         "object": "list",
         "model": req.model,
-        "data": results
+        "data": data
     }
 
 
